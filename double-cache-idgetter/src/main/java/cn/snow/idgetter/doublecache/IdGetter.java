@@ -177,14 +177,29 @@ public class IdGetter {
     private void doUntilFillOtherSegmentSuccess() {
         int tryTime = 0;
         while (isOtherSegmentEmpty()) {
-            if (tryTime++ > 5) {
+            if (tryTime++ > 50) {
                 throw new IdGetFatalException("try to fill Other segment fail over limit.....");
             }
             try {
-                segment.set(otherSegmentIndex(), loadOtherSegment(bizTag));
-            } catch (IdGetFailException e) {
-                log.warn("The IdGetFailException can be retry until the other segment full", e);
+                IdGetterThreadPool.delayExecutePool().schedule(()->{
+                    try {
+                        segment.set(otherSegmentIndex(), loadOtherSegment(bizTag));
+                    } catch (IdGetFailException e) {
+                        log.warn("The IdGetFailException can be retry until the other segment full", e);
+                        try {
+                            Thread.sleep(1000);
+                        } catch (InterruptedException interruptedException) {
+                            log.warn("doUntilFillOtherSegmentSuccess sleep InterruptedException", e);
+                            Thread.currentThread().interrupt();
+                        }
+                    }
+                }, 1000, TimeUnit.MILLISECONDS).get();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } catch (ExecutionException e) {
+                throw new IdGetFailException("load id segment fail", e);
             }
+
         }
     }
 
@@ -213,7 +228,7 @@ public class IdGetter {
         if (segment.get(otherSegmentIndex()) == null) {
             return true;
         }
-        return segment.get(otherSegmentIndex()).getMinId().longValue() < segment.get(currentSegmentIndex()).getMinId().longValue();
+        return segment.get(otherSegmentIndex()).getMinId() < segment.get(currentSegmentIndex()).getMinId();
     }
 
     /**
@@ -320,7 +335,20 @@ public class IdGetter {
      * @return
      */
     private IdSegment loadOtherSegment(String bizTag) {
-        return updateId(bizTag);
+        for (int i = 0; i < 20; i++) {
+            try {
+                return updateId(bizTag);
+            } catch (Exception e) {
+                log.warn("load id segment fail, it will be re-try", e);
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException interruptedException) {
+                    log.warn("load id segment={} sleep interrupted", bizTag, interruptedException);
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+        throw new IdGetFailException("load id segment fail and over the re-try time");
     }
 
     /**

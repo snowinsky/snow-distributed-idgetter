@@ -21,7 +21,7 @@ public class IdGetterFactory {
 
     private static final ExecutorService THREAD_POOL = new ThreadPoolExecutor(5, 20,
             0L, TimeUnit.MILLISECONDS,
-            new LinkedBlockingQueue<>(16), new SnowIdGetterThreadFactory("snow-id-getter", true), new ThreadPoolExecutor.CallerRunsPolicy());
+            new LinkedBlockingQueue<>(16), new SnowIdGetterThreadFactory("snow-id-getter", false), new ThreadPoolExecutor.CallerRunsPolicy());
 
     private static final ConcurrentHashMap<String, IdGetter> BIZ_TAG_ID_LEAF = new ConcurrentHashMap<>();
 
