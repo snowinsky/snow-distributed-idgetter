@@ -10,7 +10,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.concurrent.locks.ReentrantLock;
 
-import cn.snow.idgetter.ISequenceRepository;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -120,15 +119,20 @@ public class IdGetter {
      * @return
      */
     private Long asyncGetId() {
-        //当前缓冲区使用超过50%，则需要加载另一个缓冲区, 不同之处在于加载另一个缓冲区是异步完成
-        if (needLoadOtherSegment() && asyncLoadSegmentTask.get() == null) {
-            asyncLoadOtherSegment();
+        lock.lock();
+        try {
+            //当前缓冲区使用超过50%，则需要加载另一个缓冲区, 不同之处在于加载另一个缓冲区是异步完成
+            if (needLoadOtherSegment() && asyncLoadSegmentTask.get() == null) {
+                asyncLoadOtherSegment();
+            }
+            //当前缓冲区使用量达100%，切换到另一个缓冲区。
+            if (needSwitchToOtherSegment()) {
+                asyncSwitchOtherSegment();
+            }
+            return currentId.incrementAndGet();
+        } finally {
+            lock.unlock();
         }
-        //当前缓冲区使用量达100%，切换到另一个缓冲区。
-        if (needSwitchToOtherSegment()) {
-            asyncSwitchOtherSegment();
-        }
-        return currentId.incrementAndGet();
     }
 
     /**
@@ -136,42 +140,37 @@ public class IdGetter {
      * 切换之前得确保填充备用缓冲区的动作已经完成且装填成功
      */
     private void asyncSwitchOtherSegment() {
-        lock.lock();
-        try {
-            if (needSwitchToOtherSegment()) {
-                boolean isLoadingSuccess;
-                try {
-                    isLoadingSuccess = (asyncLoadSegmentTask.get() == null || asyncLoadSegmentTask.get().get(1500, TimeUnit.MILLISECONDS));
-                    // 确保另一个缓冲区已加载结束
-                    if (isLoadingSuccess) {
-                        setSegmentChanged(!isSegmentChanged());
-                        currentId = new AtomicLong(segment.get(currentSegmentIndex()).getMinId());
-                        asyncLoadSegmentTask.set(null);
-                    }
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    log.warn("get the asyncLoadSegmentTask result InterruptedException fail", e.getMessage());
-                    isLoadingSuccess = false;
-                    asyncLoadSegmentTask.set(null);
-                } catch (ExecutionException e) {
-                    log.warn("get the asyncLoadSegmentTask result ExecutionException fail", e.getMessage(), e);
-                    isLoadingSuccess = false;
-                    asyncLoadSegmentTask.set(null);
-                } catch (TimeoutException e) {
-                    log.warn("get the asyncLoadSegmentTask result TimeoutException fail", e.getMessage(), e);
-                    isLoadingSuccess = false;
-                    asyncLoadSegmentTask.get().cancel(false);
-                    asyncLoadSegmentTask.set(null);
-                }
-                //如果备用缓冲区没有装填成功，那么就只能是无限循环，直到主缓冲区装填完毕
-                if (!isLoadingSuccess) {
-                    doUntilFillOtherSegmentSuccess();
+        if (needSwitchToOtherSegment()) {
+            boolean isLoadingSuccess;
+            try {
+                isLoadingSuccess = (asyncLoadSegmentTask.get() == null || asyncLoadSegmentTask.get().get(1500, TimeUnit.MILLISECONDS));
+                // 确保另一个缓冲区已加载结束
+                if (isLoadingSuccess) {
                     setSegmentChanged(!isSegmentChanged());
                     currentId = new AtomicLong(segment.get(currentSegmentIndex()).getMinId());
+                    asyncLoadSegmentTask.set(null);
                 }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.warn("get the asyncLoadSegmentTask result InterruptedException fail", e);
+                isLoadingSuccess = false;
+                asyncLoadSegmentTask.set(null);
+            } catch (ExecutionException e) {
+                log.warn("get the asyncLoadSegmentTask result ExecutionException fail", e);
+                isLoadingSuccess = false;
+                asyncLoadSegmentTask.set(null);
+            } catch (TimeoutException e) {
+                log.warn("get the asyncLoadSegmentTask result TimeoutException fail", e);
+                isLoadingSuccess = false;
+                asyncLoadSegmentTask.get().cancel(false);
+                asyncLoadSegmentTask.set(null);
             }
-        } finally {
-            lock.unlock();
+            //如果备用缓冲区没有装填成功，那么就只能是无限循环，直到主缓冲区装填完毕
+            if (!isLoadingSuccess) {
+                doUntilFillOtherSegmentSuccess();
+                setSegmentChanged(!isSegmentChanged());
+                currentId = new AtomicLong(segment.get(currentSegmentIndex()).getMinId());
+            }
         }
     }
 
@@ -194,18 +193,13 @@ public class IdGetter {
      * 将更新数据库的任务设置为异步
      */
     private void asyncLoadOtherSegment() {
-        lock.lock();
-        try {
-            if (needLoadOtherSegment()) {
-                FutureTask<Boolean> f = new FutureTask<>(() -> {
-                    segment.set(otherSegmentIndex(), loadOtherSegment(bizTag));
-                    return true;
-                });
-                asyncLoadSegmentTask.set(f);
-                taskExecutor.submit(f);
-            }
-        } finally {
-            lock.unlock();
+        if (needLoadOtherSegment()) {
+            FutureTask<Boolean> f = new FutureTask<>(() -> {
+                segment.set(otherSegmentIndex(), loadOtherSegment(bizTag));
+                return true;
+            });
+            asyncLoadSegmentTask.set(f);
+            taskExecutor.submit(f);
         }
     }
 
@@ -228,33 +222,33 @@ public class IdGetter {
      *
      * @return
      */
-    private long syncGetId() {
-        //当前缓冲区使用超过50%，则需要加载另一个缓冲区
-        if (needLoadOtherSegment()) {
-            syncLoadOtherSegment();
+    private synchronized long syncGetId() {
+        lock.lock();
+        try {
+            //当前缓冲区使用超过50%，则需要加载另一个缓冲区
+            if (needLoadOtherSegment()) {
+                syncLoadOtherSegment();
+            }
+            //当前缓冲区使用量达100%，切换到另一个缓冲区
+            if (needSwitchToOtherSegment()) {
+                syncSwitchOtherSegment();
+            }
+            return currentId.incrementAndGet();
+        } finally {
+            lock.unlock();
         }
-        //当前缓冲区使用量达100%，切换到另一个缓冲区
-        if (needSwitchToOtherSegment()) {
-            syncSwitchOtherSegment();
-        }
-        return currentId.incrementAndGet();
     }
 
     /**
      * 同步切换备用缓冲区
      */
     private void syncSwitchOtherSegment() {
-        lock.lock();
-        try {
-            if (needSwitchToOtherSegment()) {
-                // 如果另一个缓冲区也是空的，就不得不加载,直到成功
-                doUntilFillOtherSegmentSuccess();
-                // 确保另一个缓冲区已加载后，切换缓冲区到另一个
-                setSegmentChanged(!isSegmentChanged());
-                currentId = new AtomicLong(segment.get(currentSegmentIndex()).getMinId());
-            }
-        } finally {
-            lock.unlock();
+        if (needSwitchToOtherSegment()) {
+            // 如果另一个缓冲区也是空的，就不得不加载,直到成功
+            doUntilFillOtherSegmentSuccess();
+            // 确保另一个缓冲区已加载后，切换缓冲区到另一个
+            setSegmentChanged(!isSegmentChanged());
+            currentId = new AtomicLong(segment.get(currentSegmentIndex()).getMinId());
         }
     }
 
@@ -262,14 +256,9 @@ public class IdGetter {
      * 同步加载备用缓冲区
      */
     private void syncLoadOtherSegment() {
-        lock.lock();
-        try {
-            if (needLoadOtherSegment()) {
-                // 使用50%以上，并且没有加载成功过，就进行加载
-                segment.set(otherSegmentIndex(), loadOtherSegment(bizTag));
-            }
-        } finally {
-            lock.unlock();
+        if (needLoadOtherSegment()) {
+            // 使用50%以上，并且没有加载成功过，就进行加载
+            segment.set(otherSegmentIndex(), loadOtherSegment(bizTag));
         }
     }
 
@@ -280,7 +269,7 @@ public class IdGetter {
      * @return
      */
     private boolean needSwitchToOtherSegment() {
-        return segment.get(currentSegmentIndex()).getMaxId().longValue() <= currentId.longValue();
+        return segment.get(currentSegmentIndex()).getMaxId() <= currentId.longValue();
     }
 
     /**
@@ -290,7 +279,7 @@ public class IdGetter {
      * @return
      */
     private boolean needLoadOtherSegment() {
-        return segment.get(currentSegmentIndex()).getMiddleId().longValue() <= currentId.longValue() && isOtherSegmentEmpty();
+        return segment.get(currentSegmentIndex()).getMiddleId() <= currentId.longValue() && isOtherSegmentEmpty();
     }
 
     /**
@@ -301,7 +290,9 @@ public class IdGetter {
      * @return
      */
     public Long getId() {
-        return asyncLoadingSegment ? asyncGetId() : syncGetId();
+        Long nextId = asyncLoadingSegment ? asyncGetId() : syncGetId();
+        log.info("####### current segment={}, willReturnId={}", segment, nextId);
+        return nextId;
     }
 
     /**
@@ -342,7 +333,7 @@ public class IdGetter {
         try {
             log.info("start to get batch ids from repository for {}", bizTag);
             final long currentValue = sequenceRepository.getCurrentSequence(bizTag);
-            log.info("get current max value from repository for {}", bizTag);
+            log.info("get current max value from repository for={} return={}", bizTag, currentValue);
             if (sequenceRepository.increaseSequence(bizTag, incrSize, currentValue)) {
 
                 final IdSegment currentSegment = new IdSegment();

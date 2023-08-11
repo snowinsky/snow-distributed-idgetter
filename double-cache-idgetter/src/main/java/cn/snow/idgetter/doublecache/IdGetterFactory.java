@@ -7,16 +7,17 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import javax.annotation.Resource;
-
-import lombok.Setter;
 
 public class IdGetterFactory {
 
-    public static final String T_SIN_HCC_TRX_ID = "HCC_TRX_ID";
+    private final ISequenceRepository sequenceRepository;
+    private final long defaultIncreaseSize;
 
-    @Setter
-    private Long sinHccTrxIdIncreaseSize;
+    public IdGetterFactory(ISequenceRepository sequenceRepository, long defaultIncreaseSize){
+        this.sequenceRepository = sequenceRepository;
+        this.defaultIncreaseSize = defaultIncreaseSize;
+    }
+
 
     private static final ExecutorService THREAD_POOL = new ThreadPoolExecutor(5, 20,
             0L, TimeUnit.MILLISECONDS,
@@ -24,24 +25,27 @@ public class IdGetterFactory {
 
     private static final ConcurrentHashMap<String, IdGetter> BIZ_TAG_ID_LEAF = new ConcurrentHashMap<>();
 
-    @Resource
-    @Setter
-    private ISequenceRepository sequenceRepository;
 
-    protected Long getIdByTableName(String tableName) {
-        if (BIZ_TAG_ID_LEAF.get(tableName) == null) {
+
+    protected Long getIdByBizTagName(String bizTagName) {
+        if (BIZ_TAG_ID_LEAF.get(bizTagName) == null) {
             synchronized (BIZ_TAG_ID_LEAF) {
-                if (BIZ_TAG_ID_LEAF.get(tableName) == null) {
-                    IdGetter idGetter = new IdGetter(tableName, sinHccTrxIdIncreaseSize, sequenceRepository, THREAD_POOL);
-                    BIZ_TAG_ID_LEAF.putIfAbsent(tableName, idGetter);
+                if (BIZ_TAG_ID_LEAF.get(bizTagName) == null) {
+                    IdGetter idGetter = new IdGetter(bizTagName, defaultIncreaseSize, sequenceRepository, THREAD_POOL);
+                    BIZ_TAG_ID_LEAF.putIfAbsent(bizTagName, idGetter);
                 }
             }
         }
-        return BIZ_TAG_ID_LEAF.get(tableName).getId();
+        return BIZ_TAG_ID_LEAF.get(bizTagName).getId();
     }
 
-    public Long getHccTrxIdCore() {
-        return getIdByTableName(T_SIN_HCC_TRX_ID);
+    /**
+     * bizTagName就是sql文件夹中表的name那一列
+     * @param bizTagName
+     * @return
+     */
+    public Long getId(String bizTagName) {
+        return getIdByBizTagName(bizTagName);
     }
 
 

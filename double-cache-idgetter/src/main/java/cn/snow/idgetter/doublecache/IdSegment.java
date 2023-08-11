@@ -4,9 +4,7 @@ import java.math.BigDecimal;
 
 import lombok.Getter;
 import lombok.Setter;
-import lombok.ToString;
 
-@ToString
 public class IdSegment {
 
     private Long minId;
@@ -35,5 +33,10 @@ public class IdSegment {
             }
         }
         return minId;
+    }
+
+    @Override
+    public String toString() {
+        return "(" + getMinId() + "," + maxId + "]";
     }
 }

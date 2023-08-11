@@ -2,7 +2,6 @@ package cn.snow.idgetter.doublecache;
 
 import javax.annotation.Resource;
 
-import cn.snow.idgetter.ISequenceRepository;
 import cn.snow.idgetter.doublecache.dao.TSeqConfDao;
 
 

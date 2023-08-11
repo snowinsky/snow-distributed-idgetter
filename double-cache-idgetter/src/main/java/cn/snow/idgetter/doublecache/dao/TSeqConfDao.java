@@ -1,6 +1,7 @@
 package cn.snow.idgetter.doublecache.dao;
 
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Options;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
@@ -19,5 +20,6 @@ public interface TSeqConfDao {
             "        from T_SEQ_CONF\n" +
             "        where NAME = #{seqName, jdbcType=VARCHAR}\n" +
             "          and status = 'a'")
+    @Options(flushCache = Options.FlushCachePolicy.TRUE, useCache = false)
     Long selectSeqNum(@Param("seqName") String seqName);
 }
