@@ -12,11 +12,11 @@ public class MybatisSequenceRepository implements ISequenceRepository {
 
     @Override
     public Long getCurrentSequence(String bizTag) {
-        return seqConfDao.selectSeqNum(bizTag);
+        return seqConfDao.selectSeqNum(bizTag, System.currentTimeMillis());
     }
 
     @Override
-    //@Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class, timeout = 2)
+    //@Transactional(propagation = Propagation.REQUIRED, isolation = Isolation.READ_COMMITTED, rollbackFor = Exception.class, timeout = 2)
     public boolean increaseSequence(String bizTag, long incrSize, long currentSequence) {
         return seqConfDao.updateSeqNum(bizTag, incrSize, currentSequence) == 1;
     }

@@ -19,7 +19,8 @@ public interface TSeqConfDao {
     @Select("select CURRENT_VALUE\n" +
             "        from T_SEQ_CONF\n" +
             "        where NAME = #{seqName, jdbcType=VARCHAR}\n" +
+            "          and #{currentMilliSecond} > 0 " +
             "          and status = 'a'")
     @Options(flushCache = Options.FlushCachePolicy.TRUE, useCache = false)
-    Long selectSeqNum(@Param("seqName") String seqName);
+    Long selectSeqNum(@Param("seqName") String seqName, @Param("currentMilliSecond") Long currentMilliSecond);
 }
