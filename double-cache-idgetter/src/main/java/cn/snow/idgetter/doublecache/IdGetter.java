@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.concurrent.locks.ReentrantLock;
 
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -41,6 +42,7 @@ public class IdGetter {
     /**
      * 每次拿取的id的数量
      */
+    @Getter
     private final Long incrSize;
     /**
      * 是异步加载第二个缓存吗？ true=异步 false=同步
@@ -49,6 +51,7 @@ public class IdGetter {
     /**
      * id仓库
      */
+    @Getter
     private final ISequenceRepository sequenceRepository;
     /**
      * 如果asyncLoadingSegment=true，则需要设置这一项
@@ -357,7 +360,7 @@ public class IdGetter {
      * @param bizTag
      * @return
      */
-    private IdSegment updateId(String bizTag) {
+    protected IdSegment updateId(String bizTag) {
         try {
             log.info("start to get batch ids from repository for {}", bizTag);
             final long currentValue = sequenceRepository.getCurrentSequence(bizTag);

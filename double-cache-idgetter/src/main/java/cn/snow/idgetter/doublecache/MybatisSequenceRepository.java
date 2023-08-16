@@ -17,7 +17,7 @@ public class MybatisSequenceRepository implements ISequenceRepository {
 
     @Override
     //@Transactional(propagation = Propagation.REQUIRES_NEW, isolation = Isolation.READ_COMMITTED, rollbackFor = Exception.class, timeout = 2)
-    public boolean increaseSequence(String bizTag, long incrSize, long currentSequence) {
+    public boolean increaseSequence(String bizTag, long incrSize, Long currentSequence) {
         return seqConfDao.updateSeqNum(bizTag, incrSize, currentSequence) == 1;
     }
 }

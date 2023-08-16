@@ -17,5 +17,5 @@ public interface ISequenceRepository {
      * @param currentSequence
      * @return
      */
-    boolean increaseSequence(String bizTag, long incrSize, long currentSequence);
+    boolean increaseSequence(String bizTag, long incrSize, Long currentSequence);
 }
